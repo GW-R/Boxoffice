@@ -6,7 +6,9 @@ import { GoogleGenAI } from "@google/genai";
 
 dotenv.config();
 
-const KOBIS_API_KEY = process.env.KOBIS_API_KEY || "d63b11f8e34cc51e2c8469237a821b90";
+const KOBIS_API_KEY = (process.env.KOBIS_API_KEY && process.env.KOBIS_API_KEY.trim() !== "") 
+  ? process.env.KOBIS_API_KEY 
+  : "d63b11f8e34cc51e2c8469237a821b90";
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -105,7 +107,7 @@ ${cleanKeywords.map((kw, idx) => `${idx + 1}. ${kw}`).join("\n")}
         return res.status(400).json({ error: "targetDt must be exactly 8 digits of format YYYYMMDD" });
       }
 
-      const url = `https://kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json?key=${KOBIS_API_KEY}&targetDt=${targetDt}`;
+      const url = `https://www.kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json?key=${KOBIS_API_KEY}&targetDt=${targetDt}`;
       
       const response = await fetch(url);
       if (!response.ok) {
@@ -113,6 +115,15 @@ ${cleanKeywords.map((kw, idx) => `${idx + 1}. ${kw}`).join("\n")}
       }
 
       const data = await response.json();
+      
+      // Handle custom KOBIS OpenAPI errors inside JSON response (e.g. invalid key or limit exceeded)
+      if (data && data.faultInfo) {
+        console.error("KOBIS API Fault Error:", data.faultInfo);
+        return res.status(400).json({ 
+          error: `영진위 API 오류 (${data.faultInfo.errorCode || "320"}): ${data.faultInfo.message || "유효하지 않은 개발자 키 혹은 API 한도 초과 오류가 발생했습니다."}` 
+        });
+      }
+
       res.json(data);
     } catch (error: any) {
       console.error("Error fetching KOBIS Box Office:", error);
@@ -136,6 +147,15 @@ ${cleanKeywords.map((kw, idx) => `${idx + 1}. ${kw}`).join("\n")}
       }
 
       const data = await response.json();
+
+      // Handle custom KOBIS OpenAPI errors inside JSON response
+      if (data && data.faultInfo) {
+        console.error("KOBIS API Fault Error (Movie Info):", data.faultInfo);
+        return res.status(400).json({ 
+          error: `영진위 API 상세 정보 오류 (${data.faultInfo.errorCode || "320"}): ${data.faultInfo.message || "영화 상세 정보를 가져올 수 없습니다."}` 
+        });
+      }
+
       res.json(data);
     } catch (error: any) {
       console.error("Error fetching KOBIS Movie Info:", error);

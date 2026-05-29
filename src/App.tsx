@@ -89,24 +89,32 @@ export default function App() {
     setError(null);
     try {
       const response = await fetch(`/api/boxoffice?targetDt=${targetDt}`);
-      if (!response.ok) {
-        throw new Error(`서버에서 데이터를 가져오지 못했습니다. (Status: ${response.status})`);
-      }
-      const data: KOBISBoxOfficeResponse = await response.json();
       
-      if (data.error) {
-        throw new Error(data.error);
-      }
- 
-      const list = data.boxOfficeResult?.dailyBoxOfficeList || [];
-      setBoxOfficeList(list);
+      let errorMessage = `서버에서 일일 박스오피스 데이터를 가져오지 못했습니다. (Status: ${response.status})`;
+      const contentType = response.headers.get("content-type");
+      
+      if (contentType && contentType.includes("application/json")) {
+        const data = await response.json();
+        if (response.ok) {
+          if (data.error) {
+            throw new Error(data.error);
+          }
+          const list = data.boxOfficeResult?.dailyBoxOfficeList || [];
+          setBoxOfficeList(list);
 
-      // Default-select the first movie in the list if available
-      if (list.length > 0) {
-        setSelectedMovieCd(list[0].movieCd);
+          // Default-select the first movie in the list if available
+          if (list.length > 0) {
+            setSelectedMovieCd(list[0].movieCd);
+          } else {
+            setSelectedMovieCd(null);
+            setMovieDetails(null);
+          }
+        } else {
+          throw new Error(data.error || errorMessage);
+        }
       } else {
-        setSelectedMovieCd(null);
-        setMovieDetails(null);
+        const textError = await response.text();
+        throw new Error(textError.substring(0, 150) || errorMessage);
       }
     } catch (err: any) {
       console.error(err);
@@ -125,19 +133,27 @@ export default function App() {
     setDetailError(null);
     try {
       const response = await fetch(`/api/movie?movieCd=${movieCd}`);
-      if (!response.ok) {
-        throw new Error(`서버에서 상세 데이터를 가져오지 못했습니다. (Status: ${response.status})`);
-      }
-      const data: KOBISMovieResponse = await response.json();
       
-      if (data.error) {
-        throw new Error(data.error);
-      }
+      let errorMessage = `서버에서 영화 상세 데이터를 가져오지 못했습니다. (Status: ${response.status})`;
+      const contentType = response.headers.get("content-type");
 
-      if (data.movieInfoResult?.movieInfo) {
-        setMovieDetails(data.movieInfoResult.movieInfo);
+      if (contentType && contentType.includes("application/json")) {
+        const data = await response.json();
+        if (response.ok) {
+          if (data.error) {
+            throw new Error(data.error);
+          }
+          if (data.movieInfoResult?.movieInfo) {
+            setMovieDetails(data.movieInfoResult.movieInfo);
+          } else {
+            throw new Error("영화 상세 정보 데이터를 찾을 수 없습니다.");
+          }
+        } else {
+          throw new Error(data.error || errorMessage);
+        }
       } else {
-        throw new Error("영화 상세 정보 데이터를 찾을 수 없습니다.");
+        const textError = await response.text();
+        throw new Error(textError.substring(0, 150) || errorMessage);
       }
     } catch (err: any) {
       console.error(err);
