@@ -17,7 +17,9 @@ import {
   Award,
   CircleCheck,
   TrendingUp as RankUpIcon,
-  HelpCircle
+  HelpCircle,
+  Sparkles,
+  Quote
 } from "lucide-react";
 import type { 
   DailyBoxOfficeItem, 
@@ -61,6 +63,15 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
 
+  // Review Generator States
+  const [keyword1, setKeyword1] = useState<string>("");
+  const [keyword2, setKeyword2] = useState<string>("");
+  const [keyword3, setKeyword3] = useState<string>("");
+  const [generatedReview, setGeneratedReview] = useState<string>("");
+  const [isGeneratingReview, setIsGeneratingReview] = useState<boolean>(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [isCopied, setIsCopied] = useState<boolean>(false);
+
   // Apply Dark Mode class to the wrapper
   useEffect(() => {
     localStorage.setItem("theme", isDarkMode ? "dark" : "light");
@@ -86,7 +97,7 @@ export default function App() {
       if (data.error) {
         throw new Error(data.error);
       }
-
+ 
       const list = data.boxOfficeResult?.dailyBoxOfficeList || [];
       setBoxOfficeList(list);
 
@@ -144,8 +155,75 @@ export default function App() {
   useEffect(() => {
     if (selectedMovieCd) {
       fetchMovieDetails(selectedMovieCd);
+      // Clean review generator states on movie change
+      setGeneratedReview("");
+      setReviewError(null);
+      setKeyword1("");
+      setKeyword2("");
+      setKeyword3("");
+      setIsCopied(false);
     }
   }, [selectedMovieCd]);
+
+  // Review Generation Request Handler
+  const handleGenerateReview = async () => {
+    if (!movieDetails) return;
+    if (!keyword1.trim() || !keyword2.trim() || !keyword3.trim()) {
+      setReviewError("감상평 작성을 위한 3가지 키워드를 모두 채워주세요.");
+      return;
+    }
+
+    setIsGeneratingReview(true);
+    setReviewError(null);
+    setGeneratedReview("");
+
+    try {
+      const genresStr = movieDetails.genres?.map(g => g.genreNm).join(", ") || "";
+      const directorsStr = movieDetails.directors?.map(d => d.peopleNm).join(", ") || "";
+      const actorsStr = movieDetails.actors?.slice(0, 5).map(a => a.peopleNm).join(", ") || "";
+
+      const response = await fetch("/api/review/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          movieNm: movieDetails.movieNm,
+          genres: genresStr,
+          directors: directorsStr,
+          actors: actorsStr,
+          keywords: [keyword1, keyword2, keyword3]
+        })
+      });
+
+      let errorMessage = "감상평을 받아오는 도중 에러가 발생했습니다.";
+      const contentType = response.headers.get("content-type");
+
+      if (contentType && contentType.includes("application/json")) {
+        const data = await response.json();
+        if (response.ok) {
+          if (data.review) {
+            setGeneratedReview(data.review);
+          } else if (data.error) {
+            throw new Error(data.error);
+          } else {
+            throw new Error("서버가 올바른 결과를 반환했으나 본문 텍스트가 누락되었습니다.");
+          }
+        } else {
+          throw new Error(data.error || errorMessage);
+        }
+      } else {
+        const textError = await response.text();
+        console.error("AI Server Raw Error:", textError);
+        throw new Error(`서버 오류 (${response.status}): ${textError.substring(0, 200) || "알 수 없는 형식의 에러가 반환되었습니다."}`);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setReviewError(err.message || "감상평 생성에 실패했습니다.");
+    } finally {
+      setIsGeneratingReview(false);
+    }
+  };
 
   // Helper selectors
   const handleDateChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -593,7 +671,145 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 5. External Actions Bento Block */}
+                {/* 5. AI Review Generator Bento Block */}
+                <div id="ai-review-generator" className={`sm:col-span-2 border rounded-3xl p-6 transition-all duration-300 ${
+                  isDarkMode ? "bg-[#18181b]/70 border-zinc-800" : "bg-white border-zinc-200 shadow-sm"
+                }`}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 px-2 rounded-xl bg-blue-500/10 text-blue-500 shrink-0">
+                        <Sparkles className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black tracking-tight uppercase font-display text-zinc-900 dark:text-zinc-100">
+                          AI Review Writer <span className="text-[11px] font-bold text-blue-500 font-sans tracking-normal ml-1">(감상평 생성기)</span>
+                        </h4>
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                          선택한 영화 정보와 핵심 키워드 3개를 조합해 완벽한 감상평을 작성합니다.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Keywords Input Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                    <div className="flex flex-col">
+                      <label className="text-[9px] uppercase font-mono font-black text-zinc-400 dark:text-zinc-550 mb-1">Keyword 1</label>
+                      <input 
+                        type="text"
+                        placeholder="예: 긴장감넘치는"
+                        value={keyword1}
+                        onChange={(e) => setKeyword1(e.target.value)}
+                        className={`w-full text-xs p-2.5 rounded-xl border font-semibold outline-hidden transition-all ${
+                          isDarkMode 
+                            ? "bg-zinc-900/60 border-zinc-800 text-zinc-100 focus:border-blue-500/50 focus:bg-zinc-900" 
+                            : "bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-blue-500/50 focus:bg-white"
+                        }`}
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-[9px] uppercase font-mono font-black text-zinc-400 dark:text-zinc-550 mb-1">Keyword 2</label>
+                      <input 
+                        type="text"
+                        placeholder="예: 여운이남는"
+                        value={keyword2}
+                        onChange={(e) => setKeyword2(e.target.value)}
+                        className={`w-full text-xs p-2.5 rounded-xl border font-semibold outline-hidden transition-all ${
+                          isDarkMode 
+                            ? "bg-zinc-900/60 border-zinc-800 text-zinc-100 focus:border-blue-500/50 focus:bg-zinc-900" 
+                            : "bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-blue-500/50 focus:bg-white"
+                        }`}
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-[9px] uppercase font-mono font-black text-zinc-400 dark:text-zinc-550 mb-1">Keyword 3</label>
+                      <input 
+                        type="text"
+                        placeholder="예: 명품연기"
+                        value={keyword3}
+                        onChange={(e) => setKeyword3(e.target.value)}
+                        className={`w-full text-xs p-2.5 rounded-xl border font-semibold outline-hidden transition-all ${
+                          isDarkMode 
+                            ? "bg-zinc-900/60 border-zinc-800 text-zinc-100 focus:border-blue-500/50 focus:bg-zinc-900" 
+                            : "bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-blue-500/50 focus:bg-white"
+                        }`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Generate Button / UI feedback */}
+                  <div className="flex flex-col gap-3">
+                    <button
+                      onClick={handleGenerateReview}
+                      disabled={isGeneratingReview || !keyword1.trim() || !keyword2.trim() || !keyword3.trim()}
+                      className={`w-full py-3.5 px-4 rounded-2xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${
+                        isGeneratingReview
+                          ? "bg-zinc-800 text-zinc-500 border border-zinc-700 pointer-events-none cursor-not-allowed"
+                          : !keyword1.trim() || !keyword2.trim() || !keyword3.trim()
+                            ? "bg-zinc-100 dark:bg-zinc-900/40 text-zinc-400 dark:text-zinc-600 cursor-not-allowed border border-zinc-200 dark:border-zinc-850"
+                            : "bg-blue-600 hover:bg-blue-500 text-white shadow-xs hover:shadow-md cursor-pointer select-none focus:ring-2 focus:ring-blue-500"
+                      }`}
+                    >
+                      {isGeneratingReview ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>AI가 영화 정보를 연동하여 최고급 감상평을 집필 중...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4" />
+                          <span>키워드를 활용해 300자 감상평 작성하기</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Review error feedback */}
+                    {reviewError && (
+                      <div className="p-3 rounded-xl border border-rose-950/20 bg-rose-600/5 text-rose-500 text-[11px] font-bold text-center">
+                        {reviewError}
+                      </div>
+                    )}
+
+                    {/* AI Generated review display card */}
+                    {generatedReview && (
+                      <div className={`p-5 rounded-2.5xl border transition-all ${
+                        isDarkMode 
+                          ? "bg-zinc-950/50 border-zinc-850" 
+                          : "bg-blue-50/15 border-blue-100/70"
+                      }`}>
+                        <div className="flex items-center gap-1.5 text-[10px] uppercase font-black tracking-widest text-blue-500 mb-3 font-mono">
+                          <Quote className="w-4 h-4 text-blue-500" />
+                          <span>Review Completed (AI 감상 서평)</span>
+                        </div>
+                        <p className="text-xs sm:text-sm leading-relaxed text-zinc-700 dark:text-zinc-300 font-medium whitespace-pre-line bg-transparent">
+                          {generatedReview}
+                        </p>
+                        
+                        {/* Copy / Action buttons inside frame */}
+                        <div className="flex justify-end mt-4 border-t border-zinc-200/50 dark:border-zinc-850 pt-3">
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(generatedReview);
+                              setIsCopied(true);
+                              setTimeout(() => setIsCopied(false), 2000);
+                            }}
+                            className={`px-3.5 py-2 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                              isCopied
+                                ? "bg-emerald-600 border-emerald-600 text-white"
+                                : isDarkMode 
+                                  ? "bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white" 
+                                  : "bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 shadow-xs"
+                            }`}
+                          >
+                            {isCopied ? "복사 성공!" : "감상평 클립보드에 복사"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 6. External Actions Bento Block */}
                 <div className="sm:col-span-2 grid grid-cols-2 gap-3.5">
                   <a
                     href={`https://www.youtube.com/results?search_query=영화+${encodeURIComponent(movieDetails.movieNm)}+예고편`}
