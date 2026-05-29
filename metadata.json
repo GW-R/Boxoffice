@@ -1,0 +1,8 @@
+{
+  "name": "KOBIS 박스오피스 조회",
+  "description": "일별 박스오피스 순위 및 영화 상세 정보를 조회할 수 있는 대시보드 웹 어플리케이션입니다.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
